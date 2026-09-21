@@ -26,11 +26,15 @@ const AMBER_BORDER = 'rgba(51,80,222,0.18)';
 const GLASS_BG = 'rgba(255,255,255,0.66)';
 const GLASS_BORDER = 'rgba(255,255,255,0.9)';
 
-// parcel.png has some transparent margin baked in around the rider. Nudge
-// PARCEL_GROUND_PADDING up/down by eye until the wheels sit flush on the road.
+// parcel.png has NO transparent margin at the bottom (the tyres touch the last
+// pixel rows), so nothing is cropped: PARCEL_GROUND_PADDING must stay 0 or the
+// wheels get sliced off. Vertical position on the road is set by
+// PARCEL_ROAD_OFFSET (styles.parcelWrap.bottom) - raise it to lift the bike,
+// lower it to sink the tyres deeper into the road band (road is 46px tall).
 const PARCEL_IMAGE_WIDTH = 248;
 const PARCEL_IMAGE_HEIGHT = 205;
-const PARCEL_GROUND_PADDING = 30;
+const PARCEL_GROUND_PADDING = 0;
+const PARCEL_ROAD_OFFSET = 34;
 const PARCEL_VISIBLE_HEIGHT = PARCEL_IMAGE_HEIGHT - PARCEL_GROUND_PADDING;
 
 const TRUST_BADGES = [
@@ -657,7 +661,7 @@ const styles = StyleSheet.create({
     marginRight: 28,
   },
 
-  parcelWrap: { position: 'absolute', bottom: 44, alignSelf: 'center', zIndex: 3 },
+  parcelWrap: { position: 'absolute', bottom: PARCEL_ROAD_OFFSET, alignSelf: 'center', zIndex: 3 },
   parcelClip: { width: PARCEL_IMAGE_WIDTH, height: PARCEL_VISIBLE_HEIGHT, overflow: 'hidden' },
   sceneImage: {
     position: 'absolute',
