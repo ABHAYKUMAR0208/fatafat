@@ -77,7 +77,9 @@ function Cloud({
 }) {
   const t = useLoop(duration, delay);
   const style = useAnimatedStyle(() => ({
-    transform: [{ translateX: -80 + t.value * (sceneWidth + 160) }],
+    // Right-to-left, matching the road's scroll direction below (was left-to-right,
+    // which fought the road and read as the background sliding "backward").
+    transform: [{ translateX: sceneWidth + 80 - t.value * (sceneWidth + 160) }],
   }));
   return (
     <Animated.View style={[{ position: 'absolute', top, left: 0 }, style]} pointerEvents="none">
@@ -110,7 +112,8 @@ function SweepingTree({ size, top, duration, delay, sceneWidth }: {
 }) {
   const t = useLoop(duration, delay);
   const style = useAnimatedStyle(() => ({
-    transform: [{ translateX: -size + t.value * (sceneWidth + size * 2) }],
+    // Right-to-left, matching the road's scroll direction (see Cloud above).
+    transform: [{ translateX: sceneWidth + size - t.value * (sceneWidth + size * 2) }],
   }));
   return (
     <Animated.View style={[{ position: 'absolute', top }, style]} pointerEvents="none">
@@ -175,13 +178,23 @@ function Cab({ sceneWidth, roadHeight }: { sceneWidth: number; roadHeight: numbe
   // Tune these independently from the scooty scene.
   const GROUND_OFFSET_PCT = 0.5; // fraction of roadHeight the cab embeds into the road
   const BOB_AMPLITUDE = 2.5; // cars bob a touch less than the scooty
+  const SUSPENSION_PERIOD_MS = 800; // bob + rock share this so they move as one motion
 
   const bob = useSharedValue(0);
+  const rock = useSharedValue(0);
   useEffect(() => {
     bob.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 800, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0, { duration: 800, easing: Easing.inOut(Easing.sin) })
+        withTiming(1, { duration: SUSPENSION_PERIOD_MS, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: SUSPENSION_PERIOD_MS, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+    rock.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: SUSPENSION_PERIOD_MS, easing: Easing.inOut(Easing.sin) }),
+        withTiming(-1, { duration: SUSPENSION_PERIOD_MS, easing: Easing.inOut(Easing.sin) })
       ),
       -1,
       true
@@ -189,7 +202,10 @@ function Cab({ sceneWidth, roadHeight }: { sceneWidth: number; roadHeight: numbe
   }, []);
 
   const style = useAnimatedStyle(() => ({
-    transform: [{ translateY: -bob.value * BOB_AMPLITUDE }],
+    transform: [
+      { translateY: -bob.value * BOB_AMPLITUDE },
+      { rotate: `${rock.value * 0.8}deg` },
+    ],
   }));
 
   const puddlePulse = usePulse(1400);

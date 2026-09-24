@@ -14,7 +14,8 @@ import {
 import { colors, fonts } from '../../constants/theme';
 import { StoreBadgeIcon } from '../GetFatafatApp';
 
-const parcelImg = require('../../assets/illustrations/parcel.png');
+const parcelImg = require('../../assets/illustrations/parcel-body.png'); // body, with a hole punched where the front disc was (see wheel-disc-front.png)
+const wheelDiscFrontImg = require('../../assets/illustrations/wheel-disc-front.png'); // the cut-out disc, rendered separately so it can spin
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -26,11 +27,15 @@ const AMBER_BORDER = 'rgba(51,80,222,0.18)';
 const GLASS_BG = 'rgba(255,255,255,0.66)';
 const GLASS_BORDER = 'rgba(255,255,255,0.9)';
 
-// parcel.png has some transparent margin baked in around the rider. Nudge
-// PARCEL_GROUND_PADDING up/down by eye until the wheels sit flush on the road.
+// parcel.png has NO transparent margin at the bottom (the tyres touch the last
+// pixel rows), so nothing is cropped: PARCEL_GROUND_PADDING must stay 0 or the
+// wheels get sliced off. Vertical position on the road is set by
+// PARCEL_ROAD_OFFSET (styles.parcelWrap.bottom) - raise it to lift the bike,
+// lower it to sink the tyres deeper into the road band (road is 46px tall).
 const PARCEL_IMAGE_WIDTH = 248;
 const PARCEL_IMAGE_HEIGHT = 205;
-const PARCEL_GROUND_PADDING = 30;
+const PARCEL_GROUND_PADDING = 0;
+const PARCEL_ROAD_OFFSET = 34;
 const PARCEL_VISIBLE_HEIGHT = PARCEL_IMAGE_HEIGHT - PARCEL_GROUND_PADDING;
 
 const TRUST_BADGES = [
@@ -40,6 +45,40 @@ const TRUST_BADGES = [
 ];
 
 const PACKAGE_SIZES = ['Document', 'Small', 'Medium'] as const;
+
+// Wheel centres measured directly off parcel.png (412x340 source), scaled
+// into the rendered PARCEL_IMAGE_WIDTH x PARCEL_IMAGE_HEIGHT box. Only valid
+// for this specific artwork — recalculate if parcel.png is ever replaced.
+const PARCEL_SRC_WIDTH = 412;
+const PARCEL_SRC_HEIGHT = 340;
+const WHEELS_SRC = {
+  rear: { x: 82, y: 274 },
+  front: { x: 346, y: 280 },
+};
+const scaleX = PARCEL_IMAGE_WIDTH / PARCEL_SRC_WIDTH;
+const scaleY = (PARCEL_IMAGE_HEIGHT - PARCEL_GROUND_PADDING) / PARCEL_SRC_HEIGHT;
+const WHEEL_GROUND_Y = Math.max(WHEELS_SRC.rear.y, WHEELS_SRC.front.y) * scaleY + 6; // just below both tyres
+const WHEEL_POSITIONS = {
+  rear: WHEELS_SRC.rear.x * scaleX,
+  front: WHEELS_SRC.front.x * scaleX,
+};
+
+// The front brake disc/rotor is the only part of the wheel with a visible,
+// rotationally-asymmetric pattern (the vent holes) worth actually rotating —
+// the tyre and rim are a featureless black ring, so spinning their pixels
+// would look identical to standing still. The fork, caliper, fender and
+// exhaust are NOT part of the rotating wheel assembly in real life, so we
+// don't rotate them: parcel-body.png has the disc-only pixels erased to a
+// transparent hole, and wheel-disc-front.png (cropped from the same source,
+// same pixels) is layered separately underneath so it can spin while
+// everything else stays put. There's no equivalent for the rear disc — it's
+// almost entirely hidden behind the exhaust in this artwork — so the rear
+// wheel relies on the speed-line streaks instead.
+const FRONT_DISC_SRC = { cx: 349, cy: 280, layerRadius: 35 };
+const FRONT_DISC_SIZE = FRONT_DISC_SRC.layerRadius * 2 * scaleX;
+const FRONT_DISC_LEFT = (FRONT_DISC_SRC.cx - FRONT_DISC_SRC.layerRadius) * scaleX;
+const FRONT_DISC_TOP = (FRONT_DISC_SRC.cy - FRONT_DISC_SRC.layerRadius) * scaleY;
+const FRONT_DISC_SPIN_MS = 550; // one full turn; lower = faster spin
 
 /* ── helpers ── */
 function useHover() {
@@ -191,6 +230,66 @@ function Sun() {
   );
 }
 
+// Ground-plane speed the whole scene agrees on: the road's dash pattern
+// (28px dash + 28px gap = 56px) travels this many px/sec. Every other looping
+// layer's duration is derived from this so nothing drifts out of sync, and
+// depth order is enforced by speed: closer layers must scroll faster than
+// farther ones (grass > road > trees > hills), or the parallax illusion
+// inverts and reads as "sliding" instead of "driving forward."
+const ROAD_PATTERN_PX = 56;
+const GROUND_SPEED_PX_PER_SEC = 145; // tune this single number to speed up/slow down the whole scene
+const ROAD_DURATION_MS = (ROAD_PATTERN_PX / GROUND_SPEED_PX_PER_SEC) * 1000;
+
+const GRASS_PATTERN_PX = 120;
+const GRASS_SPEED_PX_PER_SEC = GROUND_SPEED_PX_PER_SEC * 1.35; // foreground: faster than the road
+const GRASS_DURATION_MS = (GRASS_PATTERN_PX / GRASS_SPEED_PX_PER_SEC) * 1000;
+
+const TREE_PATTERN_PX = 180;
+const TREE_SPEED_PX_PER_SEC = GROUND_SPEED_PX_PER_SEC * 0.42; // mid-ground: slower than the road
+const TREE_DURATION_MS = (TREE_PATTERN_PX / TREE_SPEED_PX_PER_SEC) * 1000;
+
+const HILL_PATTERN_PX = 260;
+const HILL_SPEED_PX_PER_SEC = GROUND_SPEED_PX_PER_SEC * 0.16; // background: slowest of all
+const HILL_DURATION_MS = (HILL_PATTERN_PX / HILL_SPEED_PX_PER_SEC) * 1000;
+
+// Suspension bob + chassis lean share one period so they move as a single,
+// smooth up/down-and-tilt motion instead of two independently-timed
+// oscillations beating against each other, which is what reads as a
+// mechanical "zig-zag" rather than a bike riding over a road.
+const SUSPENSION_PERIOD_MS = 900;
+
+// Three short streaks per wheel that flick out and fade, staggered in phase,
+// to sell "this wheel is spinning fast" without animating the wheel pixels
+// themselves. wheelSpin runs 0->1 on a tight 260ms loop; each streak reads a
+// phase-shifted slice of it so they don't all pulse in unison.
+function WheelSpeedLines({ spin, x, y }: { spin: Animated.Value; x: number; y: number }) {
+  const offsets = [0, 0.33, 0.66];
+  return (
+    <View style={[styles.wheelLinesWrap, { left: x - 15, top: y }]} pointerEvents="none">
+      {offsets.map((phase, i) => {
+        const t = Animated.modulo(Animated.add(spin, phase), 1);
+        const translateX = t.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -13],
+        });
+        const opacity = t.interpolate({
+          inputRange: [0, 0.15, 0.7, 1],
+          outputRange: [0, 0.55, 0.15, 0],
+        });
+        return (
+          <Animated.View
+            key={i}
+            style={[
+              styles.wheelLine,
+              { top: i * 4, opacity, transform: [{ translateX }] },
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 function AnimatedParcelScene() {
   const bounceY = useRef(new Animated.Value(0)).current;
   const rock = useRef(new Animated.Value(0)).current;
@@ -198,19 +297,21 @@ function AnimatedParcelScene() {
   const treeScroll = useRef(new Animated.Value(0)).current;
   const hillScroll = useRef(new Animated.Value(0)).current;
   const grassScroll = useRef(new Animated.Value(0)).current;
+  const wheelSpin = useRef(new Animated.Value(0)).current;
+  const discSpin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const bounce = Animated.loop(
       Animated.sequence([
         Animated.timing(bounceY, {
-          toValue: -1.6,
-          duration: 220,
+          toValue: -1.4,
+          duration: SUSPENSION_PERIOD_MS / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(bounceY, {
-          toValue: 0.4,
-          duration: 220,
+          toValue: 0,
+          duration: SUSPENSION_PERIOD_MS / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -220,14 +321,14 @@ function AnimatedParcelScene() {
     const chassisRock = Animated.loop(
       Animated.sequence([
         Animated.timing(rock, {
-          toValue: 0.4,
-          duration: 280,
+          toValue: 0.35,
+          duration: SUSPENSION_PERIOD_MS / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(rock, {
-          toValue: -0.4,
-          duration: 280,
+          toValue: -0.35,
+          duration: SUSPENSION_PERIOD_MS / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -236,8 +337,8 @@ function AnimatedParcelScene() {
 
     const road = Animated.loop(
       Animated.timing(roadScroll, {
-        toValue: -56,
-        duration: 420,
+        toValue: -ROAD_PATTERN_PX,
+        duration: ROAD_DURATION_MS,
         easing: Easing.linear,
         useNativeDriver: false,
       }),
@@ -246,8 +347,8 @@ function AnimatedParcelScene() {
 
     const trees = Animated.loop(
       Animated.timing(treeScroll, {
-        toValue: -180,
-        duration: 2300,
+        toValue: -TREE_PATTERN_PX,
+        duration: TREE_DURATION_MS,
         easing: Easing.linear,
         useNativeDriver: false,
       }),
@@ -256,8 +357,8 @@ function AnimatedParcelScene() {
 
     const hills = Animated.loop(
       Animated.timing(hillScroll, {
-        toValue: -260,
-        duration: 6000,
+        toValue: -HILL_PATTERN_PX,
+        duration: HILL_DURATION_MS,
         easing: Easing.linear,
         useNativeDriver: false,
       }),
@@ -266,13 +367,53 @@ function AnimatedParcelScene() {
 
     const grass = Animated.loop(
       Animated.timing(grassScroll, {
-        toValue: -120,
-        duration: 1150,
+        toValue: -GRASS_PATTERN_PX,
+        duration: GRASS_DURATION_MS,
         easing: Easing.linear,
         useNativeDriver: false,
       }),
       { iterations: -1 }
     );
+
+    // spin and discSpinLoop below deliberately do NOT use Animated.loop().
+    // Animated.loop() on a single one-directional timing with
+    // useNativeDriver: true is a known react-native-web bug: it plays once
+    // and then stops, because the web CSS-driver never restarts the
+    // animation on repeat (it works fine for the sequence-based bounce/rock
+    // above, and for the useNativeDriver:false scrolls above, just not for a
+    // single repeating native-driver timing). Driving the repeat manually
+    // from JS via the completion callback sidesteps that bug entirely and
+    // behaves identically on native and web.
+    let spinActive = true;
+    const runSpin = () => {
+      if (!spinActive) return;
+      wheelSpin.setValue(0);
+      Animated.timing(wheelSpin, {
+        toValue: 1,
+        duration: 260,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) runSpin();
+      });
+    };
+
+    // Continuous front-disc rotation. 0 -> 1 maps to 0deg -> 360deg, so
+    // resetting to 0 between reps is an invisible jump (0deg and 360deg
+    // are the same frame).
+    let discSpinActive = true;
+    const runDiscSpin = () => {
+      if (!discSpinActive) return;
+      discSpin.setValue(0);
+      Animated.timing(discSpin, {
+        toValue: 1,
+        duration: FRONT_DISC_SPIN_MS,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) runDiscSpin();
+      });
+    };
 
     bounce.start();
     chassisRock.start();
@@ -280,6 +421,8 @@ function AnimatedParcelScene() {
     trees.start();
     hills.start();
     grass.start();
+    runSpin();
+    runDiscSpin();
 
     return () => {
       bounce.stop();
@@ -288,12 +431,21 @@ function AnimatedParcelScene() {
       trees.stop();
       hills.stop();
       grass.stop();
+      spinActive = false;
+      discSpinActive = false;
+      wheelSpin.stopAnimation();
+      discSpin.stopAnimation();
     };
-  }, [bounceY, rock, roadScroll, treeScroll, hillScroll, grassScroll]);
+  }, [bounceY, rock, roadScroll, treeScroll, hillScroll, grassScroll, wheelSpin, discSpin]);
 
   const rotate = rock.interpolate({
     inputRange: [-1, 1],
     outputRange: ['-0.6deg', '0.6deg'],
+  });
+
+  const discRotate = discSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
   });
 
   const roadDashes = Array.from({ length: 10 }).map((_, i) => (
@@ -352,9 +504,18 @@ function AnimatedParcelScene() {
         style={[styles.parcelWrap, { transform: [{ translateY: bounceY }, { rotate }] }]}
       >
         <View style={styles.parcelClip}>
+          <Animated.Image
+            source={wheelDiscFrontImg}
+            style={[
+              styles.frontDiscImage,
+              { transform: [{ rotate: discRotate }] },
+            ]}
+          />
           <Image source={parcelImg} style={styles.sceneImage} resizeMode="contain" />
         </View>
         <View style={styles.parcelShadow} />
+        <WheelSpeedLines spin={wheelSpin} x={WHEEL_POSITIONS.rear} y={WHEEL_GROUND_Y} />
+        <WheelSpeedLines spin={wheelSpin} x={WHEEL_POSITIONS.front} y={WHEEL_GROUND_Y} />
       </Animated.View>
 
       <Animated.View style={[styles.grassTrack, { transform: [{ translateX: grassScroll }] }]}>
@@ -657,7 +818,7 @@ const styles = StyleSheet.create({
     marginRight: 28,
   },
 
-  parcelWrap: { position: 'absolute', bottom: 44, alignSelf: 'center', zIndex: 3 },
+  parcelWrap: { position: 'absolute', bottom: PARCEL_ROAD_OFFSET, alignSelf: 'center', zIndex: 3 },
   parcelClip: { width: PARCEL_IMAGE_WIDTH, height: PARCEL_VISIBLE_HEIGHT, overflow: 'hidden' },
   sceneImage: {
     position: 'absolute',
@@ -665,6 +826,13 @@ const styles = StyleSheet.create({
     left: 0,
     width: PARCEL_IMAGE_WIDTH,
     height: PARCEL_IMAGE_HEIGHT,
+  },
+  frontDiscImage: {
+    position: 'absolute',
+    left: FRONT_DISC_LEFT,
+    top: FRONT_DISC_TOP,
+    width: FRONT_DISC_SIZE,
+    height: FRONT_DISC_SIZE,
   },
   parcelShadow: {
     position: 'absolute',
@@ -676,6 +844,16 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     // @ts-ignore
     filter: IS_WEB ? 'blur(5px)' : undefined,
+  },
+
+  wheelLinesWrap: { position: 'absolute', width: 15, height: 12 },
+  wheelLine: {
+    position: 'absolute',
+    right: 0,
+    width: 11,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'rgba(71,85,105,0.8)',
   },
 
   grassTrack: { position: 'absolute', bottom: -2, left: 0, flexDirection: 'row', alignItems: 'flex-end', zIndex: 4 },

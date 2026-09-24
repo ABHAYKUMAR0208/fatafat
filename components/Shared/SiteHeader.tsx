@@ -5,9 +5,9 @@ import { Image, ImageStyle, Pressable, StyleSheet, Text, useWindowDimensions, Vi
 import { NAV_LINKS } from '../../constants/nav';
 import { colors, fonts } from '../../constants/theme';
 
-const logoImg = require('../../assets/logo/fatafat-logo-compact.png');
-// Compact logo (mark + wordmark, no tagline) so it stays legible at header height.
-const logoImgStyle: ImageStyle = { height: 56, width: 56 * (640 / 348) };
+const logoImg = require('../../assets/logo/fatafat-logo.png');
+// Same full logo (mark + wordmark + tagline) as the footer, at header scale.
+const logoImgStyle: ImageStyle = { height: 56, width: 56 * (800 / 508) };
 
 const DESKTOP_BREAKPOINT = 900; // >= this: centered pill nav. below it: hamburger
 export const HEADER_HEIGHT = 76;

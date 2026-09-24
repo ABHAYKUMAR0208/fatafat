@@ -13,6 +13,7 @@ const pinkRiderImg = require('../../../assets/illustrations/pink-ride.png');
 
 export default function PinkScooterRider({ accent = '#FFD5E8' }: { accent?: string }) {
   const bob = useSharedValue(0);
+  const rock = useSharedValue(0);
 
   useEffect(() => {
     bob.value = withRepeat(
@@ -23,7 +24,15 @@ export default function PinkScooterRider({ accent = '#FFD5E8' }: { accent?: stri
       -1,
       true
     );
-  }, [bob]);
+    rock.value = withRepeat(
+      withSequence(
+        withTiming(0.6, { duration: 950, easing: Easing.inOut(Easing.quad) }),
+        withTiming(-0.6, { duration: 850, easing: Easing.inOut(Easing.quad) })
+      ),
+      -1,
+      true
+    );
+  }, [bob, rock]);
 
   // Tune this scooter independently of the car/bike — no effect on the others.
   const GROUND_OFFSET = -2; // + moves down, - moves up
@@ -31,7 +40,10 @@ export default function PinkScooterRider({ accent = '#FFD5E8' }: { accent?: stri
   const HEIGHT = 194; // bump this (keep WIDTH/HEIGHT roughly proportional) to resize
 
   const style = useAnimatedStyle(() => ({
-    transform: [{ translateY: bob.value + GROUND_OFFSET }],
+    transform: [
+      { translateY: bob.value + GROUND_OFFSET },
+      { rotate: `${rock.value}deg` },
+    ],
   }));
 
   return (

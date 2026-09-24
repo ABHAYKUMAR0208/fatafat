@@ -34,6 +34,12 @@ const CAR_IMAGE_HEIGHT = 190;
 const CAR_GROUND_PADDING = 34;
 const CAR_VISIBLE_HEIGHT = CAR_IMAGE_HEIGHT - CAR_GROUND_PADDING;
 
+// Bob + rock share one period so they move as a single, smooth up/down-and-tilt
+// motion instead of two independently-timed oscillations beating against each
+// other (was 260ms vs 320ms) — that mismatch is what read as a mechanical
+// "zig-zag" rather than a car riding over a road.
+const SUSPENSION_PERIOD_MS = 900;
+
 const TRUST_BADGES = [
   { icon: 'shield-checkmark-outline' as const, label: 'ID-verified both sides' },
   { icon: 'time-outline' as const, label: 'Publish days ahead' },
@@ -207,31 +213,31 @@ function AnimatedCarScene() {
       Animated.sequence([
         Animated.timing(bounceY, {
           toValue: -1.6,
-          duration: 260,
+          duration: SUSPENSION_PERIOD_MS / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(bounceY, {
           toValue: 0.4,
-          duration: 260,
+          duration: SUSPENSION_PERIOD_MS / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
       ])
     );
 
-    // 2. Very subtle chassis rock — reduced so tires read as planted, not bobbing
+    // 2. Chassis rock — now synced to the same period as the bounce above.
     const chassisRock = Animated.loop(
       Animated.sequence([
         Animated.timing(rock, {
           toValue: 0.35,
-          duration: 320,
+          duration: SUSPENSION_PERIOD_MS / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(rock, {
           toValue: -0.35,
-          duration: 320,
+          duration: SUSPENSION_PERIOD_MS / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),

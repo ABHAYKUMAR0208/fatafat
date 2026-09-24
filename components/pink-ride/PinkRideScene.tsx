@@ -172,12 +172,22 @@ function Road({ sceneWidth, sceneHeight }: { sceneWidth: number; sceneHeight: nu
 // ---------- the rider ----------
 
 function Rider({ sceneWidth, roadHeight }: { sceneWidth: number; roadHeight: number }) {
+  const SUSPENSION_PERIOD_MS = 700; // bob + rock share this so they move as one motion
   const bob = useSharedValue(0);
+  const rock = useSharedValue(0);
   useEffect(() => {
     bob.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 700, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0, { duration: 700, easing: Easing.inOut(Easing.sin) })
+        withTiming(1, { duration: SUSPENSION_PERIOD_MS, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: SUSPENSION_PERIOD_MS, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+    rock.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: SUSPENSION_PERIOD_MS, easing: Easing.inOut(Easing.sin) }),
+        withTiming(-1, { duration: SUSPENSION_PERIOD_MS, easing: Easing.inOut(Easing.sin) })
       ),
       -1,
       true
@@ -185,7 +195,10 @@ function Rider({ sceneWidth, roadHeight }: { sceneWidth: number; roadHeight: num
   }, []);
 
   const style = useAnimatedStyle(() => ({
-    transform: [{ translateY: -bob.value * 4 }],
+    transform: [
+      { translateY: -bob.value * 4 },
+      { rotate: `${rock.value * 1.2}deg` },
+    ],
   }));
 
   const puddlePulse = usePulse(1400);
