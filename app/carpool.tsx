@@ -14,7 +14,6 @@ import Footer from '../components/Shared/Footer';
 import { colors } from '../constants/theme';
 
 const DESKTOP_BREAKPOINT = 900;
-
 export default function CarpoolPage() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= DESKTOP_BREAKPOINT;
@@ -23,7 +22,6 @@ export default function CarpoolPage() {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <SiteHeader />
-
         <CarpoolHero isDesktop={isDesktop} />
         <CarpoolStats isDesktop={isDesktop} />
         <CarpoolHowItWorks isDesktop={isDesktop} />
